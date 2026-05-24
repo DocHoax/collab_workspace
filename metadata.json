@@ -1,0 +1,6 @@
+{
+  "name": "Team Collaboration Tool",
+  "description": "A lightweight web-based team collaboration tool featuring real-time messaging, local file sharing, a sprint task board, and detailed project progress monitoring.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
