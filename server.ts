@@ -261,7 +261,130 @@ app.post("/api/scrum-coach", async (req, res) => {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ error: "GEMINI_API_KEY environment variable is not configured." });
+      const query = (prompt || "").toLowerCase();
+      let reply = "";
+
+      if (query.includes("outline") || query.includes("methodology") || query.includes("chapter 3")) {
+        reply = `### B.Sc. Thesis Methodology Chapter Outline (Chapter 3)
+Here is a structured, academic methodology outline tailored for your lightweight web-based Agile collaboration tool:
+
+1. **Research Design**: 
+   - Contextualize the tool as a practical artifact in a software engineering design-science research project.
+2. **System Architecture**:
+   - Highlighting the lightweight backend (Express serverless / Node.js) and responsive client (Vite + React).
+   - Highlighting fallback strategies (WebSockets state-sync vs. client-side HTTP polling for low-resource users).
+3. **Agile Methodology Adoption**:
+   - Breakdown of the 4 Sprints (Sprint 1: Requirement Analysis; Sprint 2: Kanban board; Sprint 3: Real-time chat & file sharing; Sprint 4: Integration & Evaluation).
+4. **Usability & Evaluation Metrics**:
+   - Outline the use of the **Post-Study System Usability Questionnaire (PSSUQ)** to measure system usefulness, information quality, and interface quality.
+5. **Data Collection & Analysis**:
+   - Focus group walkthroughs and quantitative questionnaire analysis of participants at LASUSTECH.
+
+*Tip: Mubarak, you should coordinate with Dr. Raphael Ekpo to verify if this structure matches the department guidelines.*`;
+      } else if (query.includes("sprint") || query.includes("decompose") || query.includes("break down")) {
+        reply = `### Decomposed Sprints & Owner Assignments
+Based on your current workspace sprint configurations, here is a detailed breakdown of the remaining work:
+
+1. **Sprint 2: Kanban Workspace Workflow**
+   - **Mubarak Awoyemi (Frontend)**: Refine dynamic HTML5 drag-and-drop column transitions and fix CSS responsiveness under cyberpunk theme.
+   - **Kemi Jinadu (Backend)**: Optimize the database file read/write synchronization with \`/tmp/db.json\` and refine the Express endpoint responses.
+2. **Sprint 3: Real-Time Communication & Shared Files**
+   - **Mubarak Awoyemi (Frontend)**: Integrate chat sidebar and upload panel with real-time UI updates (including status polling fallback).
+   - **Kemi Jinadu (Backend)**: Add base64 image/document upload middleware, auto-create folder directories, and broadcast dynamic chat logs.
+3. **Sprint 4: Evaluation & System Integration**
+   - **Abiola Alao (UI/UX)**: Draft and conduct the usability questionnaire layout and collect response matrices.
+   - **Dr. Raphael Ekpo (Supervisor)**: Review system validation criteria, analyze PSSUQ results, and approve final deployment.`;
+      } else if (query.includes("evaluation") || query.includes("pssuq") || query.includes("metrics") || query.includes("questionnaire")) {
+        reply = `### Thesis Evaluation & PSSUQ Usability Indicators
+To thoroughly evaluate the usability of your lightweight collaboration workspace, implement the **PSSUQ (Post-Study System Usability Questionnaire)**. Here are the core metrics and indicators:
+
+| Subscale | Indicators Checked | Questions Sample |
+| :--- | :--- | :--- |
+| **System Usefulness (SYSUSE)** | Ease of use, simplicity, speed, efficiency, and comfort level | "The workspace interface was simple and quick to navigate." |
+| **Information Quality (INFOQUAL)** | Error messages clarity, documentation help, and feedback loops | "The system notifications clearly explained how to resolve upload/sync issues." |
+| **Interface Quality (INTERQUAL)** | Aesthetic appeal, consistency, and professional layout | "The theme switching option (Light/Dark/Cyberpunk) is visually appealing." |
+
+**Implementation Strategy:**
+- Administer a 16-item 7-point Likert scale questionnaire to 20 student developer participants at LASUSTECH.
+- Calculate the mean scores for overall satisfaction and each subscale (lower score indicates higher usability).`;
+      } else if (query.includes("component") || query.includes("react") || query.includes("typescript") || query.includes("code")) {
+        reply = `### Mock TypeScript Client State Sync Component
+Here is a React component snippet demonstrating how client-side state synchronization handles the WebSocket-to-HTTP polling fallback:
+
+\`\`\`typescript
+import React, { useEffect, useState } from 'react';
+
+interface SyncProps {
+  wsUrl: string;
+  pollUrl: string;
+  onStateUpdate: (data: any) => void;
+}
+
+export const StateSyncManager: React.FC<SyncProps> = ({ wsUrl, pollUrl, onStateUpdate }) => {
+  const [isOnline, setIsOnline] = useState(false);
+
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    const connectWS = () => {
+      ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        setIsOnline(true);
+        if (pollInterval) clearInterval(pollInterval);
+      };
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'SYNC_STATE') {
+          onStateUpdate(message.payload);
+        }
+      };
+      ws.onclose = () => {
+        setIsOnline(false);
+        // Fallback to HTTP polling if WebSocket fails
+        pollInterval = setInterval(async () => {
+          try {
+            const res = await fetch(pollUrl);
+            const data = await res.json();
+            onStateUpdate(data);
+          } catch (err) {
+            console.error("HTTP sync polling failed", err);
+          }
+        }, 4000);
+      };
+    };
+
+    connectWS();
+    return () => {
+      ws?.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [wsUrl, pollUrl]);
+
+  return (
+    <div className="flex items-center space-x-2 text-sm">
+      <span className={\`h-3 w-3 rounded-full \${isOnline ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}\`} />
+      <span>{isOnline ? 'Real-Time Sync (WS)' : 'Simulated Sync (HTTP Polling)'}</span>
+    </div>
+  );
+};
+\`\`\`
+
+*Tip: Mubarak, integrate this logic inside your main layout component to give users active visual feedback on connection status.*`;
+      } else {
+        reply = `### Agile Coach Simulator (No API Key Mode)
+Hello Mubarak! I am running in **Local Simulation Mode** because the \`GEMINI_API_KEY\` is not configured in this environment.
+
+Although I am not connected to live Gemini AI right now, I can still assist you with pre-defined Agile & B.Sc. thesis topics. Try asking me about these topics by clicking the suggestion chips or typing:
+- **"Chapter 3 Outline"** or **"Methodology"** for thesis chapter structure guidance.
+- **"Decompose sprint"** or **"sprint breakdown"** for tasks and team assignments.
+- **"PSSUQ evaluation"** or **"usability metrics"** to view evaluation questionnaire plans.
+- **"React state sync component"** or **"TypeScript code"** to view client state sync helper snippets.
+
+*Feel free to ask a question containing any of those keywords!*`;
+      }
+
+      return res.json({ reply });
     }
 
     // Lazy initialization of GoogleGenAI
