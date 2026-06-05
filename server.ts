@@ -76,12 +76,16 @@ interface DatabaseState {
   files: ProjectFile[];
 }
 
-const DB_PATH = path.join(process.cwd(), "db.json");
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+const DB_PATH = process.env.VERCEL
+  ? path.join("/tmp", "db.json")
+  : path.join(process.cwd(), "db.json");
+const UPLOADS_DIR = process.env.VERCEL
+  ? path.join("/tmp", "uploads")
+  : path.join(process.cwd(), "uploads");
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR);
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
 // Serve uploads directory statically
@@ -132,6 +136,19 @@ function loadDatabase(): DatabaseState {
     if (fs.existsSync(DB_PATH)) {
       const raw = fs.readFileSync(DB_PATH, "utf-8");
       return JSON.parse(raw);
+    }
+    
+    // Vercel fallback: if /tmp/db.json doesn't exist, read from read-only project root and write to /tmp
+    const seedPath = path.join(process.cwd(), "db.json");
+    if (fs.existsSync(seedPath)) {
+      const raw = fs.readFileSync(seedPath, "utf-8");
+      const data = JSON.parse(raw);
+      try {
+        fs.writeFileSync(DB_PATH, raw, "utf-8");
+      } catch (e) {
+        console.error("Warning: Could not write database seed to /tmp:", e);
+      }
+      return data;
     }
   } catch (err) {
     console.error("Error reading database file, using fallback configuration:", err);
@@ -404,6 +421,72 @@ wss.on("connection", (ws: WebSocket) => {
   });
 });
 
+// REST API routes for serverless/Vercel fallback mutations
+
+app.post("/api/tasks", (req, res) => {
+  const taskObj = req.body;
+  if (!taskObj || !taskObj.id) {
+    return res.status(400).json({ error: "Invalid task payload" });
+  }
+  const exists = dbState.tasks.some(t => t.id === taskObj.id);
+  if (!exists) {
+    dbState.tasks.push(taskObj);
+    saveDatabase(dbState);
+    broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+  }
+  res.json({ success: true, task: taskObj });
+});
+
+app.put("/api/tasks", (req, res) => {
+  const updatedTask = req.body;
+  if (!updatedTask || !updatedTask.id) {
+    return res.status(400).json({ error: "Invalid task payload" });
+  }
+  dbState.tasks = dbState.tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
+  saveDatabase(dbState);
+  broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+  res.json({ success: true, task: updatedTask });
+});
+
+app.delete("/api/tasks/:id", (req, res) => {
+  const taskId = req.params.id;
+  if (!taskId) {
+    return res.status(400).json({ error: "Task ID is required" });
+  }
+  dbState.tasks = dbState.tasks.filter(t => t.id !== taskId);
+  saveDatabase(dbState);
+  broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+  res.json({ success: true });
+});
+
+app.post("/api/sprints", (req, res) => {
+  const sprintObj = req.body;
+  if (!sprintObj || !sprintObj.id) {
+    return res.status(400).json({ error: "Invalid sprint payload" });
+  }
+  const exists = dbState.sprints.some(s => s.id === sprintObj.id);
+  if (!exists) {
+    dbState.sprints.push(sprintObj);
+    saveDatabase(dbState);
+    broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+  }
+  res.json({ success: true, sprint: sprintObj });
+});
+
+app.post("/api/messages", (req, res) => {
+  const msgObj = req.body;
+  if (!msgObj || !msgObj.id) {
+    return res.status(400).json({ error: "Invalid message payload" });
+  }
+  const exists = dbState.messages.some(m => m.id === msgObj.id);
+  if (!exists) {
+    dbState.messages.push(msgObj);
+    saveDatabase(dbState);
+    broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+  }
+  res.json({ success: true, message: msgObj });
+});
+
 // Setup Vite Dev middleware or static files for production
 async function startAppServer() {
   if (process.env.NODE_ENV !== "production") {
@@ -424,9 +507,15 @@ async function startAppServer() {
     });
   }
 
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running at http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    httpServer.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server is running at http://localhost:${PORT}`);
+    });
+  }
 }
 
-startAppServer();
+if (!process.env.VERCEL) {
+  startAppServer();
+}
+
+export default app;

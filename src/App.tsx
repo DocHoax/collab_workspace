@@ -31,6 +31,84 @@ export default function App() {
   const [reconnectCount, setReconnectCount] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
 
+  // Theme support
+  const [theme, setTheme] = useState<"light" | "dark" | "cyberpunk">(() => {
+    return (localStorage.getItem("workspace-theme") as any) || "light";
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.remove("light", "dark", "cyberpunk");
+    root.classList.add(theme);
+    localStorage.setItem("workspace-theme", theme);
+  }, [theme]);
+
+  // Toast Notification State
+  interface Toast {
+    id: string;
+    message: string;
+    type: "info" | "success" | "warning";
+    isExiting?: boolean;
+  }
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const addToast = (message: string, type: "info" | "success" | "warning" = "info") => {
+    const id = "toast_" + Math.random().toString(36).substring(2, 9);
+    setToasts((prev) => [...prev, { id, message, type }]);
+    
+    // Auto dismiss
+    setTimeout(() => {
+      setToasts((prev) => prev.map((t) => t.id === id ? { ...t, isExiting: true } : t));
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 200);
+    }, 4000);
+  };
+
+  // Compare dbState to push notifications
+  const prevDbState = useRef<any>(null);
+
+  useEffect(() => {
+    if (!prevDbState.current) {
+      prevDbState.current = dbState;
+      return;
+    }
+
+    // 1. Detect new messages
+    if (dbState.messages && dbState.messages.length > prevDbState.current.messages.length) {
+      const newMsg = dbState.messages[dbState.messages.length - 1];
+      if (newMsg.senderId !== activeUser?.id) {
+        const senderName = newMsg.senderId === "system"
+          ? "System"
+          : dbState.users.find(u => u.id === newMsg.senderId)?.name || "Someone";
+        addToast(`[Chat] ${senderName}: "${newMsg.text.substring(0, 35)}${newMsg.text.length > 35 ? '...' : ''}"`, "info");
+      }
+    }
+
+    // 2. Detect new files
+    if (dbState.files && dbState.files.length > prevDbState.current.files.length) {
+      const newFile = dbState.files[dbState.files.length - 1];
+      if (newFile.uploaderId !== activeUser?.id) {
+        const uploaderName = dbState.users.find(u => u.id === newFile.uploaderId)?.name || "Someone";
+        addToast(`[Shared Files] ${uploaderName} shared: "${newFile.name}"`, "success");
+      }
+    }
+
+    // 3. Detect task updates
+    if (dbState.tasks && prevDbState.current.tasks) {
+      dbState.tasks.forEach((task) => {
+        const prevTask = prevDbState.current.tasks.find((t: any) => t.id === task.id);
+        if (prevTask && prevTask.status !== task.status) {
+          addToast(`[Task Board] "${task.title}" shifted to ${task.status.toUpperCase()}`, "success");
+        } else if (!prevTask && prevDbState.current.tasks.length > 0) {
+          addToast(`[Task Board] New task: "${task.title}"`, "success");
+        }
+      });
+    }
+
+    prevDbState.current = dbState;
+  }, [dbState, activeUser]);
+
   // Initial HTTP State fetch
   useEffect(() => {
     fetch("/api/state")
@@ -121,24 +199,113 @@ export default function App() {
     }
   };
 
+  // Poll state when WebSocket is disconnected (e.g. on Vercel)
+  useEffect(() => {
+    if (wsConnected) return;
+
+    console.log("WebSocket offline, initiating fallback HTTP database polling (4s intervals)...");
+    const interval = setInterval(() => {
+      fetch("/api/state")
+        .then((res) => {
+          if (!res.ok) throw new Error("Server state offline");
+          return res.json();
+        })
+        .then((data) => {
+          setDbState((prev) => {
+            if (JSON.stringify(prev) !== JSON.stringify(data)) {
+              return data;
+            }
+            return prev;
+          });
+        })
+        .catch((err) => console.warn("Polling sync state warning:", err));
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [wsConnected]);
+
   // Actions
-  const handleCreateTask = (task: Task) => {
-    sendEvent("CREATE_TASK", task);
+  const handleCreateTask = async (task: Task) => {
+    if (wsConnected) {
+      sendEvent("CREATE_TASK", task);
+    } else {
+      try {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(task),
+        });
+        if (res.ok) {
+          setDbState(prev => ({ ...prev, tasks: [...prev.tasks, task] }));
+        }
+      } catch (err) {
+        console.error("Failed to create task via HTTP:", err);
+      }
+    }
   };
 
-  const handleUpdateTask = (task: Task) => {
-    sendEvent("UPDATE_TASK", task);
+  const handleUpdateTask = async (task: Task) => {
+    if (wsConnected) {
+      sendEvent("UPDATE_TASK", task);
+    } else {
+      try {
+        const res = await fetch("/api/tasks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(task),
+        });
+        if (res.ok) {
+          setDbState(prev => ({
+            ...prev,
+            tasks: prev.tasks.map(t => t.id === task.id ? task : t)
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to update task via HTTP:", err);
+      }
+    }
   };
 
-  const handleDeleteTask = (id: string) => {
-    sendEvent("DELETE_TASK", id);
+  const handleDeleteTask = async (id: string) => {
+    if (wsConnected) {
+      sendEvent("DELETE_TASK", id);
+    } else {
+      try {
+        const res = await fetch(`/api/tasks/${id}`, {
+          method: "DELETE",
+        });
+        if (res.ok) {
+          setDbState(prev => ({
+            ...prev,
+            tasks: prev.tasks.filter(t => t.id !== id)
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to delete task via HTTP:", err);
+      }
+    }
   };
 
-  const handleCreateSprint = (sprint: Sprint) => {
-    sendEvent("CREATE_SPRINT", sprint);
+  const handleCreateSprint = async (sprint: Sprint) => {
+    if (wsConnected) {
+      sendEvent("CREATE_SPRINT", sprint);
+    } else {
+      try {
+        const res = await fetch("/api/sprints", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sprint),
+        });
+        if (res.ok) {
+          setDbState(prev => ({ ...prev, sprints: [...prev.sprints, sprint] }));
+        }
+      } catch (err) {
+        console.error("Failed to create sprint via HTTP:", err);
+      }
+    }
   };
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = async (text: string) => {
     if (!activeUser) return;
     const newMessage: Message = {
       id: "msg_" + Math.random().toString(36).substring(2, 9),
@@ -146,7 +313,22 @@ export default function App() {
       senderId: activeUser.id,
       timestamp: new Date().toISOString()
     };
-    sendEvent("SEND_MESSAGE", newMessage);
+    if (wsConnected) {
+      sendEvent("SEND_MESSAGE", newMessage);
+    } else {
+      try {
+        const res = await fetch("/api/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newMessage),
+        });
+        if (res.ok) {
+          setDbState(prev => ({ ...prev, messages: [...prev.messages, newMessage] }));
+        }
+      } catch (err) {
+        console.error("Failed to send message via HTTP:", err);
+      }
+    }
   };
 
   const handleUploadFile = async (name: string, type: string, size: string, data: string) => {
@@ -368,27 +550,43 @@ export default function App() {
       </div>
 
       {/* RIGHT CONTENT WORKSPACE - Scrollable on both viewports */}
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
+      <div className="flex-1 flex flex-col min-w-0 bg-theme-bg transition-colors duration-300">
         
         {/* Right Side Header Bar - Matching design HTML Header precisely */}
-        <header className="h-16 bg-white border-b border-slate-200/80 px-6 md:px-8 flex items-center justify-between shrink-0 shadow-xs sticky top-0 md:top-0 z-30">
+        <header className="h-16 bg-theme-card border-b border-theme-border px-6 md:px-8 flex items-center justify-between shrink-0 shadow-xs sticky top-0 md:top-0 z-30 transition-colors duration-300">
           <div className="flex items-center gap-3">
-            <h2 id="app-title" className="text-sm md:text-base font-bold text-slate-800 tracking-tight leading-tight">
+            <h2 id="app-title" className="text-sm md:text-base font-bold text-theme-text tracking-tight leading-tight">
               {activeTab === "tasks" && "Deliverables Board"}
               {activeTab === "chat" && "Team Chatroom"}
               {activeTab === "files" && "Shared Storage Workspace"}
               {activeTab === "sprints" && "Milestones Timeline"}
               {activeTab === "coach" && "Agile Gemini Partner"}
             </h2>
-            <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded uppercase tracking-wide border border-blue-100/80 hidden sm:inline-block">
+            <span className="px-2 py-0.5 bg-blue-500/10 text-blue-500 text-[10px] font-bold rounded uppercase tracking-wide border border-blue-500/30 hidden sm:inline-block">
               Active Project
             </span>
           </div>
 
           <div className="flex items-center gap-2 md:gap-4 shrink-0">
+            {/* Theme Select Toggler */}
+            <div className="flex items-center gap-1.5 bg-theme-bg border border-theme-border rounded-lg px-2 py-0.5 sm:px-2.5 sm:py-1 scale-90 sm:scale-100 transition-colors duration-300">
+              <span className="text-[9px] font-bold text-theme-muted uppercase tracking-wide hidden sm:inline-block">
+                Theme:
+              </span>
+              <select
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as any)}
+                className="text-[10px] font-bold text-theme-text bg-transparent border-none focus:outline-none cursor-pointer uppercase py-0.5"
+              >
+                <option value="light" className="bg-white text-slate-800">Light</option>
+                <option value="dark" className="bg-slate-900 text-slate-100">Dark</option>
+                <option value="cyberpunk" className="bg-black text-[#00f0ff]">Cyber</option>
+              </select>
+            </div>
+
             {/* Interactive Avatar switcher stack */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hidden lg:inline-block">
+              <span className="text-[10px] text-theme-muted font-bold uppercase tracking-wider hidden lg:inline-block">
                 Switch Viewport:
               </span>
               <div className="flex -space-x-1.5">
@@ -420,9 +618,9 @@ export default function App() {
             </div>
 
             {/* Sync Port Display */}
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 shrink-0 scale-90 sm:scale-100">
+            <div className="flex items-center gap-1.5 bg-theme-bg border border-theme-border rounded-lg px-2.5 py-1 shrink-0 scale-90 sm:scale-100 transition-colors duration-300">
               <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
-              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">
+              <span className="text-[9px] font-bold text-theme-muted uppercase tracking-wide">
                 {wsConnected ? "Sync Connected" : "Connecting"}
               </span>
             </div>
@@ -436,43 +634,43 @@ export default function App() {
           <div id="quick-indicators-row" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             
             {/* Done Deliverables Widget */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 flex items-center gap-3.5 hover:shadow-sm transition-shadow">
-              <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+            <div className="bg-theme-card rounded-xl border border-theme-border shadow-xs p-4 flex items-center gap-3.5 hover:shadow-sm transition-all duration-300">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-600 shrink-0">
                 <CheckSquare className="w-5 h-5 animate-pulse" />
               </div>
               <div className="truncate">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wide">Tasks Completed</span>
+                <span className="text-[10px] text-theme-muted font-bold block uppercase tracking-wide">Tasks Completed</span>
                 <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-base font-extrabold text-slate-800">{doneTasks}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold">of {totalTasks} total</span>
+                  <span className="text-base font-extrabold text-theme-text">{doneTasks}</span>
+                  <span className="text-[10px] text-theme-muted font-semibold">of {totalTasks} total</span>
                 </div>
               </div>
             </div>
 
             {/* Active milestones Widget */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 flex items-center gap-3.5 hover:shadow-sm transition-shadow">
-              <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+            <div className="bg-theme-card rounded-xl border border-theme-border shadow-xs p-4 flex items-center gap-3.5 hover:shadow-sm transition-all duration-300">
+              <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-600 shrink-0">
                 <Layers className="w-5 h-5" />
               </div>
               <div className="truncate">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wide">Milestones Sprints</span>
+                <span className="text-[10px] text-theme-muted font-bold block uppercase tracking-wide">Milestones Sprints</span>
                 <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-base font-extrabold text-slate-800">{dbState.sprints.length}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold font-mono">active timelines</span>
+                  <span className="text-base font-extrabold text-theme-text">{dbState.sprints.length}</span>
+                  <span className="text-[10px] text-theme-muted font-semibold font-mono">active timelines</span>
                 </div>
               </div>
             </div>
 
             {/* Shared Deliverables Widget */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4 flex items-center gap-3.5 hover:shadow-sm transition-shadow">
-              <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+            <div className="bg-theme-card rounded-xl border border-theme-border shadow-xs p-4 flex items-center gap-3.5 hover:shadow-sm transition-all duration-300">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0">
                 <Folder className="w-5 h-5" />
               </div>
               <div className="truncate">
-                <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wide">Shared Deliverables</span>
+                <span className="text-[10px] text-theme-muted font-bold block uppercase tracking-wide">Shared Deliverables</span>
                 <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-base font-extrabold text-slate-800">{dbState.files.length}</span>
-                  <span className="text-[10px] text-slate-400 font-semibold">academic artifacts</span>
+                  <span className="text-base font-extrabold text-theme-text">{dbState.files.length}</span>
+                  <span className="text-[10px] text-theme-muted font-semibold">academic artifacts</span>
                 </div>
               </div>
             </div>
@@ -535,23 +733,59 @@ export default function App() {
         </main>
 
         {/* Footer credits - Beautiful corporate block at bottom of Right workspace area */}
-        <footer className="bg-white border-t border-slate-200 p-5 mt-auto text-slate-500">
+        <footer className="bg-theme-card border-t border-theme-border p-5 mt-auto text-theme-muted transition-colors duration-300">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
             <div>
               <span className="text-[9px] tracking-widest text-[#2563eb] uppercase font-bold block">
                 Academic Thesis Prototype Implementation Deliverable
               </span>
-              <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+              <p className="text-[11px] text-theme-muted font-medium mt-0.5">
                 Designed & developed for the award of Bachelor of Science (B.Sc.) Degree in Computer Science
               </p>
             </div>
-            <span className="text-[10px] text-slate-405 font-medium block">
+            <span className="text-[10px] text-theme-muted font-medium block">
               Lagos State University of Science and Technology (LASUSTECH) | January 2026
             </span>
           </div>
         </footer>
 
       </div>
+
+      {/* Toast Notifications Container */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2.5 max-w-sm pointer-events-none">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`pointer-events-auto flex items-center justify-between gap-3 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold backdrop-blur-md transition-all ${
+              t.isExiting ? "animate-toast-out" : "animate-toast-in"
+            } ${
+              theme === "cyberpunk"
+                ? "bg-black/90 text-[#00f0ff] border-[#ff007f] shadow-[0_0_10px_rgba(255,0,127,0.3)]"
+                : t.type === "success"
+                ? "bg-emerald-600 text-white border-emerald-500"
+                : t.type === "warning"
+                ? "bg-amber-600 text-white border-amber-500"
+                : "bg-slate-800 text-white border-slate-700"
+            }`}
+          >
+            <span>{t.message}</span>
+            <button
+              onClick={() => {
+                setToasts((prev) =>
+                  prev.map((item) => (item.id === t.id ? { ...item, isExiting: true } : item))
+                );
+                setTimeout(() => {
+                  setToasts((prev) => prev.filter((item) => item.id !== t.id));
+                }, 200);
+              }}
+              className="text-white/60 hover:text-white cursor-pointer select-none font-bold text-sm ml-2"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+      </div>
+
     </div>
   );
 }
