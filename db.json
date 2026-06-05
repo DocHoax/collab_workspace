@@ -1,0 +1,32 @@
+{
+  "users": [
+    { "id": "u1", "name": "Mubarak Awoyemi", "role": "Frontend Developer", "color": "blue", "matricNo": "220303010159" },
+    { "id": "u2", "name": "Dr. Raphael Ekpo", "role": "Project Supervisor", "color": "purple" },
+    { "id": "u3", "name": "Abiola Alao", "role": "UI/UX Designer", "color": "amber" },
+    { "id": "u4", "name": "Kemi Jinadu", "role": "Backend Developer", "color": "emerald", "matricNo": "220303010175" }
+  ],
+  "sprints": [
+    { "id": "s1", "name": "Sprint 1", "duration": "Weeks 1–2", "goal": "Requirement Analysis & User Authentication views.", "startDate": "2026-05-01", "endDate": "2026-05-14" },
+    { "id": "s2", "name": "Sprint 2", "duration": "Weeks 3–4", "goal": "Sprint board with status workflow tracking.", "startDate": "2026-05-15", "endDate": "2026-05-28" },
+    { "id": "s3", "name": "Sprint 3", "duration": "Weeks 5–6", "goal": "Real-time communication & local files sharing.", "startDate": "2026-05-29", "endDate": "2026-06-11" },
+    { "id": "s4", "name": "Sprint 4", "duration": "Weeks 7–8", "goal": "System Integration, evaluation questionnaire & deployment.", "startDate": "2026-06-12", "endDate": "2026-06-25" }
+  ],
+  "tasks": [
+    { "id": "t1", "title": "Conduct literature review & draft Chapter 2", "description": "Review other web-based collaboration platforms and Agile project methodologies.", "status": "done", "priority": "high", "assigneeId": "u3", "deadline": "2026-05-10", "sprintId": "s1" },
+    { "id": "t2", "title": "Design Figma wireframes and interaction flows", "description": "Develop clean intuitive layouts following design criteria for low-resource users.", "status": "done", "priority": "medium", "assigneeId": "u3", "deadline": "2026-05-12", "sprintId": "s1" },
+    { "id": "t3", "title": "Implement initial UI templates structure", "description": "Create responsive shell layout with navigation and view routers.", "status": "done", "priority": "high", "assigneeId": "u1", "deadline": "2026-05-14", "sprintId": "s1" },
+    { "id": "t4", "title": "Create local store backend controllers", "description": "Design Express API routes for fetching tasks, users, and message history.", "status": "inprogress", "priority": "high", "assigneeId": "u4", "deadline": "2026-05-24", "sprintId": "s2" },
+    { "id": "t5", "title": "Develop Kanban interactive board with column swimlanes", "description": "Write reusable drag & drop layout in React with filters for sprints and priorities.", "status": "inprogress", "priority": "high", "assigneeId": "u1", "deadline": "2026-05-26", "sprintId": "s2" },
+    { "id": "t6", "title": "Set up WebSockets state broadcasting system", "description": "Configure robust real-time synchronization between active browser frames.", "status": "todo", "priority": "medium", "assigneeId": "u4", "deadline": "2026-05-27", "sprintId": "s2" },
+    { "id": "t7", "title": "Integrate chat application panel into active screen", "description": "Standard side-bar or section with full messaging, file sharing, and auto-scrolling.", "status": "todo", "priority": "high", "assigneeId": "u1", "deadline": "2026-06-05", "sprintId": "s3" },
+    { "id": "t8", "title": "Draft evaluation metrics questionnaire", "description": "Prepare PSSUQ questions for measuring system performance and usability indicators.", "status": "backlog", "priority": "low", "assigneeId": "u2", "deadline": "2026-06-20", "sprintId": "s4" }
+  ],
+  "messages": [
+    { "id": "m1", "text": "Welcome everyone to LASUSTECH Computer Science Team Collaboration Workspace! Let's get began with Sprint 1 developments.", "senderId": "u2", "timestamp": "2026-05-23T10:15:00Z" },
+    { "id": "m2", "text": "Drafted Chapter 2 of the literature review! Uploaded the draft file here in the shared files workspace for your feedback.", "senderId": "u3", "timestamp": "2026-05-23T11:40:00Z" },
+    { "id": "m3", "text": "Awesome work Abiola! I will verify the wireframes and pair Mubarak to initiate the frontend template setups today.", "senderId": "u4", "timestamp": "2026-05-23T12:05:00Z" }
+  ],
+  "files": [
+    { "id": "f1", "name": "Chapter_2_Literature_Review.docx", "url": "/uploads/placeholder_literature.txt", "size": "45 KB", "uploaderId": "u3", "timestamp": "2026-05-23T11:38:00Z", "type": "document" }
+  ]
+}
