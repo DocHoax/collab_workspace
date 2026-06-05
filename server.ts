@@ -3,7 +3,6 @@ import path from "path";
 import fs from "fs";
 import { createServer as createHttpServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 
@@ -614,6 +613,7 @@ app.post("/api/messages", (req, res) => {
 async function startAppServer() {
   if (process.env.NODE_ENV !== "production") {
     console.log("Starting server in DEVELOPMENT mode with Vite Middleware...");
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
