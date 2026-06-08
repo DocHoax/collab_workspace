@@ -530,6 +530,16 @@ wss.on("connection", (ws: WebSocket) => {
           broadcastToAll({ type: "SYNC_STATE", payload: dbState });
           break;
         }
+        case "CREATE_USER": {
+          const userObj: User = payload;
+          const exists = dbState.users.some(u => u.id === userObj.id || (userObj.matricNo && u.matricNo === userObj.matricNo));
+          if (!exists) {
+            dbState.users.push(userObj);
+            saveDatabase(dbState);
+            broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+          }
+          break;
+        }
         default:
           console.warn("Unknown message event type received on WebSocket:", type);
       }
@@ -607,6 +617,21 @@ app.post("/api/messages", (req, res) => {
     broadcastToAll({ type: "SYNC_STATE", payload: dbState });
   }
   res.json({ success: true, message: msgObj });
+});
+
+app.post("/api/users", (req, res) => {
+  const userObj = req.body;
+  if (!userObj || !userObj.id || !userObj.name) {
+    return res.status(400).json({ error: "Invalid user payload" });
+  }
+  const exists = dbState.users.some(u => u.id === userObj.id || (userObj.matricNo && u.matricNo === userObj.matricNo));
+  if (exists) {
+    return res.status(400).json({ error: "User already exists with this Matric Number or ID" });
+  }
+  dbState.users.push(userObj);
+  saveDatabase(dbState);
+  broadcastToAll({ type: "SYNC_STATE", payload: dbState });
+  res.json({ success: true, user: userObj });
 });
 
 // Setup Vite Dev middleware or static files for production

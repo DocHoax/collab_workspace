@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { 
   Users, Layers, MessageSquare, Folder, Sparkles, RefreshCw, 
-  GraduationCap, CheckSquare, Server, AlertCircle, FileCheck
+  GraduationCap, CheckSquare, Server, AlertCircle, FileCheck, LogOut
 } from "lucide-react";
 import { User, Sprint, Task, Message, ProjectFile } from "./types";
 import TaskBoard from "./components/TaskBoard";
@@ -9,6 +9,7 @@ import ChatRoom from "./components/ChatRoom";
 import FileWorkspace from "./components/FileWorkspace";
 import SprintsManager from "./components/SprintsManager";
 import ScrumCoach from "./components/ScrumCoach";
+import AuthPage from "./components/AuthPage";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"tasks" | "chat" | "files" | "sprints" | "coach">("tasks");
@@ -26,7 +27,14 @@ export default function App() {
     files: []
   });
 
-  const [activeUser, setActiveUser] = useState<User | null>(null);
+  const [activeUser, setActiveUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem("coLabActiveUser");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [wsConnected, setWsConnected] = useState(false);
   const [reconnectCount, setReconnectCount] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
@@ -118,9 +126,6 @@ export default function App() {
       })
       .then((data) => {
         setDbState(data);
-        if (data.users && data.users.length > 0 && !activeUser) {
-          setActiveUser(data.users[0]);
-        }
       })
       .catch((err) => console.error("HTTP sync state fallback warning:", err));
   }, [reconnectCount]);
@@ -146,10 +151,6 @@ export default function App() {
 
         if (type === "SYNC_STATE") {
           setDbState(payload);
-          // Auto select active user if not set yet
-          if (payload.users && payload.users.length > 0 && !activeUser) {
-            setActiveUser(payload.users[0]);
-          }
         }
       } catch (err) {
         console.error("Error handling incoming WebSocket message packet", err);
@@ -181,11 +182,16 @@ export default function App() {
   useEffect(() => {
     if (activeUser && dbState.users.length > 0) {
       const match = dbState.users.find((u) => u.id === activeUser.id);
-      if (match && JSON.stringify(match) !== JSON.stringify(activeUser)) {
-        setActiveUser(match);
+      if (match) {
+        if (JSON.stringify(match) !== JSON.stringify(activeUser)) {
+          setActiveUser(match);
+          localStorage.setItem("coLabActiveUser", JSON.stringify(match));
+        }
+      } else {
+        // Logged in user not found (e.g. database reset)
+        setActiveUser(null);
+        localStorage.removeItem("coLabActiveUser");
       }
-    } else if (!activeUser && dbState.users.length > 0) {
-      setActiveUser(dbState.users[0]);
     }
   }, [dbState.users, activeUser]);
 
@@ -225,6 +231,42 @@ export default function App() {
   }, [wsConnected]);
 
   // Actions
+  const handleRegisterUser = async (user: User) => {
+    if (wsConnected) {
+      sendEvent("CREATE_USER", user);
+      setDbState((prev) => ({ ...prev, users: [...prev.users, user] }));
+    } else {
+      try {
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(user),
+        });
+        if (res.ok) {
+          setDbState((prev) => ({ ...prev, users: [...prev.users, user] }));
+        } else {
+          const errData = await res.json();
+          throw new Error(errData.error || "Failed to register user");
+        }
+      } catch (err: any) {
+        console.error("Failed to register user via HTTP:", err);
+        throw err;
+      }
+    }
+  };
+
+  const handleLogin = (user: User) => {
+    setActiveUser(user);
+    localStorage.setItem("coLabActiveUser", JSON.stringify(user));
+  };
+
+  const handleLogout = () => {
+    if (confirm("Are you sure you want to log out of CoLab Workspace?")) {
+      setActiveUser(null);
+      localStorage.removeItem("coLabActiveUser");
+    }
+  };
+
   const handleCreateTask = async (task: Task) => {
     if (wsConnected) {
       sendEvent("CREATE_TASK", task);
@@ -367,6 +409,16 @@ export default function App() {
   const inProgressTasks = dbState.tasks.filter((t) => t.status === "inprogress").length;
   const taskProgressPercent = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
+  if (!activeUser) {
+    return (
+      <AuthPage 
+        users={dbState.users}
+        onLogin={handleLogin}
+        onRegister={handleRegisterUser}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-50 text-slate-800 font-sans antialiased overflow-x-hidden">
       
@@ -486,9 +538,16 @@ export default function App() {
                 <div className="text-xs font-bold text-white leading-tight truncate">{activeUser.name}</div>
                 <div className="text-[10px] text-slate-500 truncate mt-0.5 flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animation-pulse" />
-                  Simulated
+                  {activeUser.role}
                 </div>
               </div>
+              <button 
+                onClick={handleLogout}
+                title="Log Out of Workspace"
+                className="text-slate-500 hover:text-red-400 p-1.5 rounded-lg hover:bg-slate-800/60 transition-all cursor-pointer shrink-0"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
@@ -597,7 +656,7 @@ export default function App() {
                     <button
                       key={u.id}
                       title={`Simulate viewport as ${u.name} (${u.role})`}
-                      onClick={() => setActiveUser(u)}
+                      onClick={() => handleLogin(u)}
                       style={{
                         backgroundColor: 
                           u.color === "blue" ? "#3b82f6" : 
