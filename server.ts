@@ -97,6 +97,9 @@ const DEFAULT_STATE: DatabaseState = {
     { id: "u2", name: "Dr. Raphael Ekpo", role: "Project Supervisor", color: "purple" },
     { id: "u3", name: "Abiola Alao", role: "UI/UX Designer", color: "amber" },
     { id: "u4", name: "Kemi Jinadu", role: "Backend Developer", color: "emerald", matricNo: "220303010175" },
+    { id: "u5", name: "Tunde Balogun", role: "QA Engineer", color: "blue", matricNo: "220303010182" },
+    { id: "u6", name: "Dr. Funmi Adebayo", role: "Co-Supervisor", color: "purple" },
+    { id: "u7", name: "Fatima Musa", role: "Academic Researcher", color: "amber", matricNo: "220303010190" },
   ],
   sprints: [
     { id: "s1", name: "Sprint 1", duration: "Weeks 1–2", goal: "Requirement Analysis & User Authentication views.", startDate: "2026-05-01", endDate: "2026-05-14" },
